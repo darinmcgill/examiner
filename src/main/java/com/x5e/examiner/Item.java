@@ -13,19 +13,6 @@ class Field {
     String className1;
 }
 
-class State {
-    final static  int   baseWireHandle = 0x7E0000;
-    public List<Item> assigned = new ArrayList<Item>();
-    public int put(Item item) {
-        int out = assigned.size() + baseWireHandle;
-        assigned.add(item);
-        return out;
-    }
-    public Item get(int itemId) {
-        int i = itemId - baseWireHandle;
-        return assigned.get(i);
-    }
-}
 
 public class Item {
     final static short STREAM_MAGIC = (short)0xaced;
@@ -87,7 +74,7 @@ public class Item {
         bb.get(contents);
         String out = new String(contents,UTF8_CHARSET);
         if (verbose) {
-            System.err.println("read string: \"" + out + "\", pos=" + bb.position());
+            System.err.println("red string: \"" + out + "\", pos=" + bb.position());
         }
         return out;
     }
@@ -171,7 +158,8 @@ public class Item {
         Field[] theFields = this.classDesc.fields;
         this.payload = new Object[n];
         for (int i=0; i<n; i++) {
-            switch (theFields[i].typecode) {
+            byte code = theFields[i].typecode;
+            switch (code) {
                 case 'B':
                     payload[i] = bb.get();
                     break;
@@ -266,7 +254,7 @@ public class Item {
                 out.readPayload(bb,state);
                 break;
             default:
-                throw new RuntimeException("unexpected tag:" + out.tag);
+                throw new RuntimeException("unexpected tag:" + Integer.toHexString(0xFF & out.tag) );
         }
         return out;
     }
