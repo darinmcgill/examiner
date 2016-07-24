@@ -246,6 +246,32 @@ public class Item {
         }
     }
 
+    private void readArrayPrimitives(ByteBuffer bb, Character kind) {
+        // not very efficient
+        payload = new Object[size];
+        for (int i=0;i<size;i++) {
+            switch (kind) {
+                case 'I': payload[i] = bb.getInt(); break;
+                case 'J': payload[i] = bb.getLong(); break;
+                case 'C': payload[i] = bb.getChar(); break;
+                case 'D': payload[i] = bb.getDouble(); break;
+                case 'F': payload[i] = bb.getFloat(); break;
+                case 'B': payload[i] = bb.get(); break;
+                case 'Z': payload[i] = (bb.get() != 0); break;
+                case 'S': payload[i] = bb.getShort(); break;
+                default:
+                    throw new RuntimeException("unexpected array type:" + kind);
+            }
+        }
+    }
+
+    private void readArrayObjects(ByteBuffer bb, State state) {
+        payload = new Object[size];
+        for (int i=0;i<size;i++) {
+            payload[i] = read(bb,state);
+        }
+    }
+
     public static Item read(ByteBuffer bb, State state) {
         Item out = new Item();
         int loc = bb.position();
@@ -282,7 +308,12 @@ public class Item {
                 out.classDesc = read(bb,state);
                 out.handle = state.put(out);
                 out.size = bb.getInt();
-                throw new RuntimeException("TC_ARRAY not implemented");
+                if (out.classDesc.string.length() == 2) {
+                    out.readArrayPrimitives(bb,out.classDesc.string.charAt(1));
+                } else {
+                    out.readArrayObjects(bb,state);
+                }
+                break;
             case TC_CLASSDESC:
                 // TC_CLASSDESC className serialVersionUID newHandle classDescInfo
                 // classDescInfo:
