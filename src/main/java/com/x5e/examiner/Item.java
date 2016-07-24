@@ -4,19 +4,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.*;
 
-class Field {
-    public byte typecode;
-    String fieldName;
-    Item className1;
-    public String toPyon() {
-        String out = "Field('"+ fieldName + "','" + (char) typecode + "'";
-        if (className1 != null)
-            out += "," + className1.toPyon();
-        out += ")";
-        return out;
-    }
-}
-
 
 public class Item {
 
@@ -30,6 +17,7 @@ public class Item {
     byte classDescFlags=0;
     Field[] fields=null;
     Object[] payload=null;
+    int byteCount = 0;
 
     public static String toPyon(Object obj) {
         if (obj instanceof Item) {
@@ -340,9 +328,16 @@ public class Item {
                 out.handle = state.put(out);
                 out.readPayload(bb,state);
                 break;
+            case TC_ENUM:
+                out.classDesc = read(bb,state);
+                out.handle = state.put(out);
+                out.payload = new Object[1];
+                out.payload[0] = read(bb,state);
+                break;
             default:
                 throw new RuntimeException("unexpected tag:" + Integer.toHexString(0xFF & out.tag) );
         }
+        out.byteCount = bb.position() - loc;
         return out;
     }
 }
