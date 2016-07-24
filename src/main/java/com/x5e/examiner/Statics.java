@@ -2,8 +2,7 @@ package com.x5e.examiner;
 
 import sun.nio.ch.FileChannelImpl;
 
-import java.io.File;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
@@ -31,11 +30,13 @@ public class Statics {
             System.exit(1);
         }
         long length = new File(args[0]).length();
-        MappedByteBuffer bb = new RandomAccessFile(args[0], "r")
-                .getChannel().map(FileChannel.MapMode.READ_ONLY, 0, length);
-        Item.start(bb);
+        RandomAccessFile raf = new RandomAccessFile(args[0],"r");
+        Item.verbose = true;
+        //BlockDataInputStream din = new BlockDataInputStream(fin);
+        Item.start(raf);
         State state = new State();
-        Item got = Item.read(bb,state);
+        Item got = Item.read(raf,state);
+        System.err.println("at position:" + raf.getFilePointer() + " out of: " + length);
         System.err.println("done reading!");
     }
 }

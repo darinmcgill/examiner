@@ -1,14 +1,14 @@
 package com.x5e.examiner;
 
-import java.nio.ByteBuffer;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.*;
-
+import static java.io.ObjectStreamConstants.*;
+import java.io.DataInput;
 
 public class Item {
 
     byte tag;
-    ByteBuffer stuff;
     int size=0;
     int handle=0;
     Item classDesc=null;
@@ -17,7 +17,6 @@ public class Item {
     byte classDescFlags=0;
     Field[] fields=null;
     Object[] payload=null;
-    int byteCount = 0;
 
     public static String toPyon(Object obj) {
         if (obj instanceof Item) {
@@ -41,25 +40,25 @@ public class Item {
         builder.append(names.getOrDefault(tag,"UNKNOWN"));
         builder.append("(");
         if (size !=0)
-            builder.append(" size=" + size);
+            builder.append(" size=").append(size);
         if (handle != 0)
-            builder.append(" handle=" + "0x" + Integer.toHexString(handle));
+            builder.append(" handle=" + "0x").append(Integer.toHexString(handle));
         if (string != null)
-            builder.append(" string='" + string + "'");
+            builder.append(" string='").append(string).append("'");
         if (serialVersionUID_ != 0)
-            builder.append(" serialVersionUID=0x" + Long.toHexString(serialVersionUID_).toUpperCase());
+            builder.append(" serialVersionUID=0x").append(Long.toHexString(serialVersionUID_).toUpperCase());
         if (classDesc != null)
-            builder.append(" classDesc=" + classDesc.toPyon() + "");
+            builder.append(" classDesc=").append(classDesc.toPyon()).append("");
         if (classDescFlags != 0)
-            builder.append(" classDescFlags=" + classDescFlags);
+            builder.append(" classDescFlags=").append(classDescFlags);
         if (fields != null) {
             builder.append(" fields=[");
-            for (Field field : fields) builder.append(toPyon(field) + " ");
+            for (Field field : fields) builder.append(toPyon(field)).append(" ");
             builder.append(" ]");
         }
         if (payload != null) {
             builder.append(" payload=[");
-            for (Object obj : payload) builder.append(toPyon(obj) + " ");
+            for (Object obj : payload) builder.append(toPyon(obj)).append(" ");
             builder.append(" ]");
         }
         builder.append(')');
@@ -68,23 +67,6 @@ public class Item {
 
     public static boolean verbose = false;
 
-    final static short STREAM_MAGIC = (short)0xaced;
-    final static short STREAM_VERSION = 5;
-    final static byte TC_NULL = (byte)0x70;
-    final static byte TC_REFERENCE = (byte)0x71;
-    final static byte TC_CLASSDESC = (byte)0x72;
-    final static byte TC_OBJECT = (byte)0x73;
-    final static byte TC_STRING = (byte)0x74;
-    final static byte TC_ARRAY = (byte)0x75;
-    final static byte TC_CLASS = (byte)0x76;
-    final static byte TC_BLOCKDATA = (byte)0x77;
-    final static byte TC_ENDBLOCKDATA = (byte)0x78;
-    final static byte TC_RESET = (byte)0x79;
-    final static byte TC_BLOCKDATALONG = (byte)0x7A;
-    final static byte TC_EXCEPTION = (byte)0x7B;
-    final static byte TC_LONGSTRING = (byte) 0x7C;
-    final static byte TC_PROXYCLASSDESC = (byte) 0x7D;
-    final static byte TC_ENUM = (byte) 0x7E;
     private static final Charset UTF8_CHARSET = Charset.forName("UTF-8");
 
     static Map<Byte,String> names = new HashMap<Byte, String>();
@@ -106,49 +88,53 @@ public class Item {
         names.put(TC_ENUM,"TC_ENUM");
     }
 
-    public static void start(ByteBuffer bb) {
-        short m = bb.getShort();
+    public String toString() {
+        return "Item('" + names.getOrDefault(tag,"UNKONWN") + "')";
+    }
+
+    public static void start(DataInput bb) throws IOException {
+        short m = bb.readShort();
         if (m != STREAM_MAGIC) throw new RuntimeException("bad magic number");
-        short v = bb.getShort();
+        short v = bb.readShort();
         if (v != STREAM_VERSION) throw new RuntimeException("bad version");
     }
 
-    public static short getUnsignedByte(ByteBuffer bb) {
-        return ((short) (bb.get() & 0xff));
+    public static short getUnsignedByte(DataInput bb) throws IOException {
+        return ((short) (bb.readByte() & 0xff));
     }
 
-    public static String readUtf(ByteBuffer bb) {
-        short len = bb.getShort();
+    public static String readUtf(DataInput bb) throws IOException {
+        short len = bb.readShort();
         if (len < 0) throw new RuntimeException("long string");
         byte[] contents = new byte[len];
-        bb.get(contents);
+        bb.readFully(contents);
         String out = new String(contents,UTF8_CHARSET);
         if (verbose) {
-            System.err.println("red string: \"" + out + "\", pos=" + bb.position());
+            System.err.println("red string: \"" + out + "\", pos=");
         }
         return out;
     }
 
-    public void readClassAnnotation(ByteBuffer bb) {
+    public void readClassAnnotation(DataInput bb) throws IOException {
         byte b;
         while (true) {
-            b = bb.get();
+            b = bb.readByte();
             if (b == TC_ENDBLOCKDATA) break;
         }
     }
 
-    public void readFields(ByteBuffer bb,State state) {
+    public void readFields(DataInput bb,State state) throws IOException {
         if (verbose) {
-            System.err.println("about to get fields at pos=" + bb.position());
+            System.err.println("about to get fields at pos=");
         }
-        short num = bb.getShort();
+        short num = bb.readShort();
         if (verbose) {
             System.err.println("got num:" + num + " 0x" + Integer.toHexString(num));
         }
         fields = new Field[num];
         for (short i=0;i<num;i++) {
             fields[i] = new Field();
-            fields[i].typecode = bb.get();
+            fields[i].typecode = bb.readByte();
             switch (fields[i].typecode) {
                 case 'B':
                 case 'C':
@@ -171,23 +157,23 @@ public class Item {
         }
     }
 
-    static long readLong(ByteBuffer bb) {
-        long out = bb.getLong();
+    static long readLong(DataInput bb) throws IOException {
+        long out = bb.readLong();
         if (verbose) {
-            System.err.println("read long: 0x" + Long.toHexString(out) + " " + out + " pos=" + bb.position());
+            System.err.println("read long: 0x" + Long.toHexString(out) + " " + out + " pos=");
         }
         return out;
     }
 
-    static int readInt(ByteBuffer bb) {
-        int out = bb.getInt();
+    static int readInt(DataInput bb) throws IOException {
+        int out = bb.readInt();
         if (verbose) {
-            System.err.println("read int: 0x" + Integer.toHexString(out) + " " + out + " pos=" + bb.position());
+            System.err.println("read int: 0x" + Integer.toHexString(out) + " " + out + " pos=");
         }
         return out;
     }
 
-    public void readPayload(ByteBuffer bb, State state) {
+    public void readPayload(DataInput bb, State state) throws IOException {
         Item classDesc = this.classDesc;
         if (classDesc == null) throw new RuntimeException("null class desc?");
         if (classDesc.tag == TC_REFERENCE) {
@@ -201,28 +187,28 @@ public class Item {
             byte code = theFields[i].typecode;
             switch (code) {
                 case 'B':
-                    payload[i] = bb.get();
+                    payload[i] = bb.readByte();
                     break;
                 case 'C':
-                    payload[i] = bb.getChar();
+                    payload[i] = bb.readChar();
                     break;
                 case 'D':
-                    payload[i] = bb.getDouble();
+                    payload[i] = bb.readDouble();
                     break;
                 case 'F':
-                    payload[i] = bb.getFloat();
+                    payload[i] = bb.readFloat();
                     break;
                 case 'I':
-                    payload[i] = bb.getInt();
+                    payload[i] = bb.readInt();
                     break;
                 case 'J':
-                    payload[i] = bb.getLong();
+                    payload[i] = bb.readLong();
                     break;
                 case 'S':
-                    payload[i] = bb.getShort();
+                    payload[i] = bb.readShort();
                     break;
                 case 'Z':
-                    payload[i] = (bb.get() != 0);
+                    payload[i] = (bb.readByte() != 0);
                     break;
                 case 'L':
                     payload[i] = read(bb,state);
@@ -234,54 +220,53 @@ public class Item {
         }
     }
 
-    private void readArrayPrimitives(ByteBuffer bb, Character kind) {
+    private void readArrayPrimitives(DataInput bb, Character kind) throws IOException {
         // not very efficient
         payload = new Object[size];
         for (int i=0;i<size;i++) {
             switch (kind) {
-                case 'I': payload[i] = bb.getInt(); break;
-                case 'J': payload[i] = bb.getLong(); break;
-                case 'C': payload[i] = bb.getChar(); break;
-                case 'D': payload[i] = bb.getDouble(); break;
-                case 'F': payload[i] = bb.getFloat(); break;
-                case 'B': payload[i] = bb.get(); break;
-                case 'Z': payload[i] = (bb.get() != 0); break;
-                case 'S': payload[i] = bb.getShort(); break;
+                case 'I': payload[i] = bb.readInt(); break;
+                case 'J': payload[i] = bb.readLong(); break;
+                case 'C': payload[i] = bb.readChar(); break;
+                case 'D': payload[i] = bb.readDouble(); break;
+                case 'F': payload[i] = bb.readFloat(); break;
+                case 'B': payload[i] = bb.readByte(); break;
+                case 'Z': payload[i] = (bb.readByte() != 0); break;
+                case 'S': payload[i] = bb.readShort(); break;
                 default:
                     throw new RuntimeException("unexpected array type:" + kind);
             }
         }
     }
 
-    private void readArrayObjects(ByteBuffer bb, State state) {
+    private void readArrayObjects(DataInput bb, State state) throws IOException {
         payload = new Object[size];
         for (int i=0;i<size;i++) {
             payload[i] = read(bb,state);
         }
     }
 
-    public static Item read(ByteBuffer bb, State state) {
+    public static Item read(DataInput bb, State state) throws IOException {
         Item out = new Item();
-        int loc = bb.position();
-        out.tag = bb.get();
+        out.tag = bb.readByte();
         if (verbose) {
             String name = names.getOrDefault(out.tag,"Unknown:" + out.tag);
-            System.err.println("start read, tag=" + name +" val=" + out.tag + " loc= " + loc);
+            System.err.println("start read, tag=" + name +" val=" + out.tag);
         }
 
         switch (out.tag) {
             case TC_BLOCKDATA:
                 out.size = getUnsignedByte(bb);
-                out.stuff = bb.slice();
-                bb.position(bb.position() + out.size);
-                break;
+                bb.skipBytes(out.size);
+                if (verbose) System.err.println("skipped bytes: " + out.size);
+                return read(bb,state);
             case TC_BLOCKDATALONG:
-                out.size = bb.getInt();
-                out.stuff = bb.slice();
-                bb.position(bb.position() + out.size);
-                break;
+                out.size = bb.readInt();
+                bb.skipBytes(out.size);
+                if (verbose) System.err.println("skipped bytes: " + out.size);
+                return read(bb,state);
             case TC_ENDBLOCKDATA:
-                break;
+                return read(bb,state);
             case TC_CLASS:
                 out.classDesc = read(bb,state);
                 out.handle = state.put(out);
@@ -295,7 +280,7 @@ public class Item {
             case TC_ARRAY:
                 out.classDesc = read(bb,state);
                 out.handle = state.put(out);
-                out.size = bb.getInt();
+                out.size = bb.readInt();
                 if (out.classDesc.string.length() == 2) {
                     out.readArrayPrimitives(bb,out.classDesc.string.charAt(1));
                 } else {
@@ -309,7 +294,7 @@ public class Item {
                 out.string = readUtf(bb);
                 out.serialVersionUID_ = readLong(bb);
                 out.handle = state.put(out);
-                out.classDescFlags = bb.get();
+                out.classDescFlags = bb.readByte();
                 out.readFields(bb,state);
                 out.readClassAnnotation(bb);
                 out.classDesc = read(bb,state); // superClassDesc
@@ -337,7 +322,6 @@ public class Item {
             default:
                 throw new RuntimeException("unexpected tag:" + Integer.toHexString(0xFF & out.tag) );
         }
-        out.byteCount = bb.position() - loc;
         return out;
     }
 }

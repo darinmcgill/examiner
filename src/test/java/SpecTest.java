@@ -2,7 +2,9 @@ import com.x5e.examiner.Item;
 import com.x5e.examiner.State;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import static com.x5e.examiner.Statics.*;
@@ -33,12 +35,13 @@ public class SpecTest {
         out.close();
         byte[] bytes = o.toByteArray();
         //dumpBytes(bytes);
-        ByteBuffer bb = ByteBuffer.wrap(bytes);
+        ByteArrayInputStream in = new ByteArrayInputStream(bytes);
+        DataInputStream din = new DataInputStream(in);
         State state = new State();
         //Item.verbose = true;
-        Item.start(bb);
-        Item item1 = Item.read(bb,state);
-        Item item2 = Item.read(bb,state);
+        Item.start(din);
+        Item item1 = Item.read(din,state);
+        Item item2 = Item.read(din,state);
         System.err.println(item1.toPyon());
         System.err.println(item2.toPyon());
     }
