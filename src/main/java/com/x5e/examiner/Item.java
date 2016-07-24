@@ -2,19 +2,84 @@ package com.x5e.examiner;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 class Field {
     public byte typecode;
     String fieldName;
-    String className1;
+    Item className1;
+    public String toPyon() {
+        String out = "Field('"+ fieldName + "','" + (char) typecode + "'";
+        if (className1 != null)
+            out += "," + className1.toPyon();
+        out += ")";
+        return out;
+    }
 }
 
 
 public class Item {
+
+    byte tag;
+    ByteBuffer stuff;
+    int size=0;
+    int handle=0;
+    Item classDesc=null;
+    long serialVersionUID_=0;
+    String string=null;
+    byte classDescFlags=0;
+    Field[] fields=null;
+    Object[] payload=null;
+
+    public static String toPyon(Object obj) {
+        if (obj instanceof Item) {
+            return ((Item) obj).toPyon();
+        }
+        if (obj instanceof Number) {
+            return obj.toString();
+        }
+        if (obj instanceof Boolean) {
+            return obj.toString();
+        }
+        if (obj instanceof Character || obj instanceof String) {
+            return "'" + obj.toString() + "'";
+        }
+        if (obj instanceof Field) return ((Field) obj).toPyon();
+        throw new RuntimeException("don't know how to show: " + obj.getClass().toString());
+    }
+
+    public String toPyon() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(names.getOrDefault(tag,"UNKNOWN"));
+        builder.append("(");
+        if (size !=0)
+            builder.append(" size=" + size);
+        if (handle != 0)
+            builder.append(" handle=" + "0x" + Integer.toHexString(handle));
+        if (string != null)
+            builder.append(" string='" + string + "'");
+        if (serialVersionUID_ != 0)
+            builder.append(" serialVersionUID=0x" + Long.toHexString(serialVersionUID_).toUpperCase());
+        if (classDesc != null)
+            builder.append(" classDesc=" + classDesc.toPyon() + "");
+        if (classDescFlags != 0)
+            builder.append(" classDescFlags=" + classDescFlags);
+        if (fields != null) {
+            builder.append(" fields=[");
+            for (Field field : fields) builder.append(toPyon(field) + " ");
+            builder.append(" ]");
+        }
+        if (payload != null) {
+            builder.append(" payload=[");
+            for (Object obj : payload) builder.append(toPyon(obj) + " ");
+            builder.append(" ]");
+        }
+        builder.append(')');
+        return builder.toString();
+    }
+
+    public static boolean verbose = false;
+
     final static short STREAM_MAGIC = (short)0xaced;
     final static short STREAM_VERSION = 5;
     final static byte TC_NULL = (byte)0x70;
@@ -32,7 +97,7 @@ public class Item {
     final static byte TC_LONGSTRING = (byte) 0x7C;
     final static byte TC_PROXYCLASSDESC = (byte) 0x7D;
     final static byte TC_ENUM = (byte) 0x7E;
-
+    private static final Charset UTF8_CHARSET = Charset.forName("UTF-8");
 
     static Map<Byte,String> names = new HashMap<Byte, String>();
     static {
@@ -64,9 +129,6 @@ public class Item {
         return ((short) (bb.get() & 0xff));
     }
 
-    private static final Charset UTF8_CHARSET = Charset.forName("UTF-8");
-
-
     public static String readUtf(ByteBuffer bb) {
         short len = bb.getShort();
         if (len < 0) throw new RuntimeException("long string");
@@ -87,7 +149,7 @@ public class Item {
         }
     }
 
-    public void readFields(ByteBuffer bb) {
+    public void readFields(ByteBuffer bb,State state) {
         if (verbose) {
             System.err.println("about to get fields at pos=" + bb.position());
         }
@@ -113,26 +175,13 @@ public class Item {
                 case '[':
                 case 'L':
                     fields[i].fieldName = readUtf(bb);
-                    fields[i].className1 = readUtf(bb);
+                    fields[i].className1 = read(bb,state);
                     break;
                 default:
                     throw new RuntimeException("unexpected field typecode:" + fields[i].typecode);
             }
         }
     }
-
-    byte tag;
-    ByteBuffer stuff;
-    int size;
-    int handle;
-    Item classDesc;
-    long serialVersionUID_;
-    String string;
-    byte classDescFlags;
-    Field[] fields;
-    Object[] payload;
-    public static boolean verbose = false;
-
 
     static long readLong(ByteBuffer bb) {
         long out = bb.getLong();
@@ -141,7 +190,6 @@ public class Item {
         }
         return out;
     }
-
 
     static int readInt(ByteBuffer bb) {
         int out = bb.getInt();
@@ -152,10 +200,14 @@ public class Item {
     }
 
     public void readPayload(ByteBuffer bb, State state) {
-        assert this.classDesc != null;
-        assert this.classDesc.fields != null;
-        int n = this.classDesc.fields.length;
-        Field[] theFields = this.classDesc.fields;
+        Item classDesc = this.classDesc;
+        if (classDesc == null) throw new RuntimeException("null class desc?");
+        if (classDesc.tag == TC_REFERENCE) {
+            classDesc = state.get(classDesc.handle);
+        }
+        assert classDesc.fields != null;
+        int n = classDesc.fields.length;
+        Field[] theFields = classDesc.fields;
         this.payload = new Object[n];
         for (int i=0; i<n; i++) {
             byte code = theFields[i].typecode;
@@ -184,6 +236,10 @@ public class Item {
                 case 'Z':
                     payload[i] = (bb.get() != 0);
                     break;
+                case 'L':
+                    payload[i] = read(bb,state);
+                    break;
+                    //throw new RuntimeException("need to read object at:" + bb.position());
                 default:
                     throw new RuntimeException("unexpected kind:" + theFields[i].typecode);
             }
@@ -235,7 +291,7 @@ public class Item {
                 out.serialVersionUID_ = readLong(bb);
                 out.handle = state.put(out);
                 out.classDescFlags = bb.get();
-                out.readFields(bb);
+                out.readFields(bb,state);
                 out.readClassAnnotation(bb);
                 out.classDesc = read(bb,state); // superClassDesc
                 break;

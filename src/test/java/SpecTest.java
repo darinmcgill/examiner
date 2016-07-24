@@ -32,14 +32,15 @@ public class SpecTest {
         out.flush();
         out.close();
         byte[] bytes = o.toByteArray();
-        dumpBytes(bytes);
+        //dumpBytes(bytes);
         ByteBuffer bb = ByteBuffer.wrap(bytes);
         State state = new State();
-        Item.verbose = true;
+        //Item.verbose = true;
         Item.start(bb);
         Item item1 = Item.read(bb,state);
         Item item2 = Item.read(bb,state);
-
+        System.err.println(item1.toPyon());
+        System.err.println(item2.toPyon());
     }
 
 }
